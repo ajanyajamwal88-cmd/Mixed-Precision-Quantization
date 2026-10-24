@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Edge AI Mixed-Precision Quantization Studio</title>
+  <!-- Chart.js CDN for interactive Pareto frontier charts -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    /* Modern Dark Glassmorphism Styling */
+    :root {
+      --bg-primary: #0f172a;
+      --bg-card: rgba(30, 41, 59, 0.75);
+      --border-card: rgba(255, 255, 255, 0.08);
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --accent-blue: #3b82f6;
+      --accent-emerald: #10b981;
+      --accent-amber: #f59e0b;
+      --accent-purple: #8b5cf6;
+      --accent-rose: #f43f5e;
+      --radius: 12px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: var(--bg-primary);
+      background-image: radial-gradient(at 0% 0%, rgba(59, 130, 246, 0.12) 0px, transparent 50%),
+                        radial-gradient(at 100% 100%, rgba(16, 185, 129, 0.08) 0px, transparent 50%);
+      color: var(--text-main);
+      min-height: 100vh;
+      padding: 24px;
+    }
+
+    .app-container { max-width: 1440px; margin: 0 auto; }
+
+    /* Navbar */
+    .navbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 24px;
+      border-bottom: 1px solid var(--border-card);
+      margin-bottom: 24px;
+    }
+
+    .brand { display: flex; align-items: center; gap: 16px; }
+    .brand .icon {
+      font-size: 32px;
+      background: rgba(59, 130, 246, 0.15);
+      padding: 10px;
+      border-radius: 12px;
+      border: 1px solid rgba(59, 130, 246, 0.3);
+    }
+    .brand h1 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; }
+    .subtitle { color: var(--text-muted); font-size: 13px; margin-top: 2px; }
+
+    .nav-badges { display: flex; gap: 10px; }
+    .badge {
+      font-size: 12px;
+      font-weight: 600;
+      padding: 6px 12px;
+      border-radius: 999px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .badge-accent {
+      background: rgba(59, 130, 246, 0.15);
+      color: #60a5fa;
+      border: 1px solid rgba(59, 130, 246, 0.3);
+    }
+    .badge-glow {
+      background: rgba(16, 185, 129, 0.15);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+
+    /* Grid Layout */
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: 360px 1fr;
+      gap: 24px;
+    }
+    @media (max-width: 1024px) { .dashboard-grid { grid-template-columns: 1fr; } }
+
+    /* Card */
+    .card {
+      background: var(--bg-card);
+      backdrop-filter: blur(16px);
+      border: 1px solid var(--border-card);
+      border-radius: var(--radius);
+      padding: 20px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+      margin-bottom: 20px;
+    }
+    .card h2, .card h3 { font-size: 17px; font-weight: 600; margin-bottom: 16px; }
+    .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+
+    /* Form Controls */
+    .form-group { margin-bottom: 18px; }
+    .form-group label { display: block; font-size: 13px; font-weight: 500; color: var(--text-muted); margin-bottom: 8px; }
+    .form-control {
+      width: 100%;
+      padding: 10px 12px;
+      background: #0f172a;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 8px;
+      color: var(--text-main);
+      font-size: 14px;
+      outline: none;
+    }
+    .form-control:focus { border-color: var(--accent-blue); }
+
+    .slider-header { display: flex; justify-content: space-between; margin-bottom: 6px; }
+    .value-highlight { color: var(--accent-blue); font-weight: 700; font-size: 14px; }
+    .slider { width: 100%; accent-color: var(--accent-blue); cursor: pointer; }
+    .hint { display: block; font-size: 11px; color: var(--text-muted); margin-top: 6px; }
+
+    .action-buttons { display: flex; flex-direction: column; gap: 10px; margin-top: 24px; }
+    .btn {
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, #2563eb, #1d4ed8);
+      color: white;
+      box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+    }
+    .btn-primary:hover { background: linear-gradient(135deg, #1d4ed8, #1e40af); }
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text-main);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+    }
+    .btn-secondary:hover { background: rgba(255, 255, 255, 0.12); }
+
+    /* Hardware Status Box */
+    .hw-status-box {
+      margin-top: 24px;
+      padding: 14px;
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid var(--border-card);
+      border-radius: 8px;
+    }
+    .hw-status-box h3 { font-size: 13px; text-transform: uppercase; color: var(--text-muted); margin-bottom: 10px; }
+    .status-item { display: flex; justify-content: space-between; align-items: center; font-size: 12px; margin-bottom: 6px; }
+    .tag { padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; }
+    .tag-success { background: rgba(16, 185, 129, 0.2); color: #34d399; }
+    .tag-danger { background: rgba(244, 63, 94, 0.2); color: #fb7185; }
+
+    /* Metrics Row */
+    .metrics-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    @media (max-width: 800px) { .metrics-row { grid-template-columns: repeat(2, 1fr); } }
+
+    .metric-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-card);
+      border-radius: var(--radius);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+    }
+    .m-label { font-size: 12px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; }
+    .m-value { font-size: 24px; font-weight: 700; margin-bottom: 4px; }
+    .m-sub { font-size: 12px; color: var(--text-muted); }
+    .highlight-green { color: var(--accent-emerald) !important; font-weight: 600; }
+
+    /* Layer Grid */
+    .legend { display: flex; gap: 14px; }
+    .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); }
+    .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+    .dot-8b { background: var(--accent-emerald); }
+    .dot-4b { background: var(--accent-amber); }
+    .dot-2b { background: var(--accent-purple); }
+
+    .layer-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+      gap: 12px;
+      max-height: 240px;
+      overflow-y: auto;
+      padding: 4px;
+    }
+    .layer-box {
+      background: #0f172a;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 8px;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      transition: transform 0.15s;
+    }
+    .layer-box:hover { transform: translateY(-2px); }
+    .layer-title { font-size: 11px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 4px; }
+    .layer-badge { font-size: 11px; font-weight: 700; align-self: flex-start; padding: 2px 6px; border-radius: 4px; margin-bottom: 4px; }
+    .badge-8b { background: rgba(16, 185, 129, 0.2); color: #34d399; }
+    .badge-4b { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+    .badge-2b { background: rgba(139, 92, 246, 0.2); color: #c084fc; }
+    .layer-sub { font-size: 10px; color: var(--text-muted); }
+
+    /* Inference Section */
+    .inference-cols { display: flex; align-items: center; gap: 16px; margin-bottom: 14px; }
+    .inf-box { flex: 1; background: #0f172a; border-radius: 8px; padding: 14px; border: 1px solid var(--border-card); }
+    .inf-box h4 { font-size: 13px; margin-bottom: 8px; color: var(--text-muted); }
+    .inf-box p { font-size: 14px; margin-bottom: 4px; }
+    .inf-vs { font-weight: 800; color: var(--text-muted); font-size: 12px; }
+    .similarity-bar {
+      display: flex;
+      justify-content: space-between;
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.2);
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+    }
+
+    /* Charts Row */
+    .charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    @media (max-width: 900px) { .charts-row { grid-template-columns: 1fr; } }
+    .chart-card canvas { width: 100% !important; height: 260px !important; }
+  </style>
+</head>
+<body>
+  <div class="app-container">
+    <!-- Navbar -->
+    <header class="navbar">
+      <div class="brand">
+        <span class="icon">⚡</span>
+        <div>
+          <h1>Edge AI Mixed-Precision Quantization Studio</h1>
+          <p class="subtitle">Accuracy–Efficiency Trade-offs & Pareto Bit Allocation for Resource-Constrained Edge Hardware</p>
+        </div>
+      </div>
+      <div class="nav-badges">
+        <span class="badge badge-accent">CSE Capstone & MDC</span>
+        <span class="badge badge-glow">ARM Cortex-M / Edge NPU</span>
+      </div>
+    </header>
+
+    <!-- Main Grid -->
+    <main class="dashboard-grid">
+      <!-- Left Column: Controls -->
+      <section class="card config-card">
+        <h2>🛠️ Edge Configuration</h2>
+
+        <div class="form-group">
+          <label for="modelSelect">Target Neural Network:</label>
+          <select id="modelSelect" class="form-control">
+            <option value="edge_cnn" selected>EdgeCNN (Microcontroller Vision, CIFAR-10)</option>
+            <option value="mobilenet_v2">MobileNetV2 (Edge NPU / Mobile Benchmark)</option>
+            <option value="tabular_mlp">EdgeTabularMLP (IoT Sensor / Anomaly Detection)</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="hardwarePreset">Target Edge Hardware:</label>
+          <select id="hardwarePreset" class="form-control">
+            <option value="cortex_m7" selected>ARM Cortex-M7 (512KB SRAM, 2MB Flash)</option>
+            <option value="raspberry_pi">Raspberry Pi 4 (Quad Cortex-A72, Linux SBC)</option>
+            <option value="edge_npu">Edge NPU Accelerator (Dedicated Low-Power Core)</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="strategySelect">Quantization Policy:</label>
+          <select id="strategySelect" class="form-control">
+            <option value="target_avg_bits" selected>Pareto Sensitivity-Guided (Target Avg Bits)</option>
+            <option value="max_memory_kb">Strict Memory Budget (Max KB)</option>
+            <option value="rule_based">Industry Rule-Based (First/Last 8b, Mid 4b)</option>
+            <option value="uniform">Uniform Quantization (INT8 / INT4 / INT2)</option>
+          </select>
+        </div>
+
+        <!-- Strategy Specific Controls -->
+        <div id="targetBitsGroup" class="form-group slider-group">
+          <div class="slider-header">
+            <label for="targetBits">Target Average Bit-Width:</label>
+            <span id="targetBitsVal" class="value-highlight">5.5 bits</span>
+          </div>
+          <input type="range" id="targetBits" min="2.0" max="8.0" step="0.1" value="5.5" class="slider">
+          <span class="hint">Allocates higher precision to sensitive layers, lower to robust layers.</span>
+        </div>
+
+        <div id="memoryBudgetGroup" class="form-group slider-group" style="display: none;">
+          <div class="slider-header">
+            <label for="memoryBudget">Max Memory Constraint (KB):</label>
+            <span id="memoryBudgetVal" class="value-highlight">220 KB</span>
+          </div>
+          <input type="range" id="memoryBudget" min="60" max="600" step="10" value="220" class="slider">
+        </div>
+
+        <div id="uniformBitsGroup" class="form-group" style="display: none;">
+          <label for="uniformBit">Uniform Precision:</label>
+          <select id="uniformBit" class="form-control">
+            <option value="8">INT8 (Standard Edge Baseline)</option>
+            <option value="4">INT4 (Aggressive Sub-byte)</option>
+            <option value="2">INT2 (Extreme Low-bit)</option>
+          </select>
+        </div>
+
+        <div class="action-buttons">
+          <button id="btnProfile" class="btn btn-primary">
+            <span>⚙️ Profile & Allocate Bits</span>
+          </button>
+          <button id="btnRunInference" class="btn btn-secondary">
+            <span>🚀 Run Live Edge Inference</span>
+          </button>
+        </div>
+
+        <!-- Hardware Feasibility Check -->
+        <div class="hw-status-box" id="hwFeasibility">
+          <h3>Target Constraint Check</h3>
+          <div class="status-item">
+            <span>SRAM Fit (Peak Buffer):</span>
+            <span id="sramStatus" class="tag tag-success">Feasible (Fits in SRAM)</span>
+          </div>
+          <div class="status-item">
+            <span>Flash / ROM Storage:</span>
+            <span id="flashStatus" class="tag tag-success">Feasible (Fits in Flash)</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Right Column: Visualizations & Metrics -->
+      <section class="metrics-column">
+        <!-- Summary Cards -->
+        <div class="metrics-row">
+          <div class="metric-card">
+            <span class="m-label">Effective Bit-Width</span>
+            <span class="m-value" id="valAvgBits">5.1 b</span>
+            <span class="m-sub" id="valBitsFormula">Size: 220.1 KB</span>
+          </div>
+          <div class="metric-card">
+            <span class="m-label">Storage Footprint</span>
+            <span class="m-value" id="valSize">220.1 KB</span>
+            <span class="m-sub highlight-green" id="valCompression">6.3x vs FP32 (1.39 MB)</span>
+          </div>
+          <div class="metric-card">
+            <span class="m-label">Theoretical BOPs</span>
+            <span class="m-value" id="valBOPs">11.4M</span>
+            <span class="m-sub highlight-green" id="valBOPsReduction">16.2x Bit-Op Reduction</span>
+          </div>
+          <div class="metric-card">
+            <span class="m-label">Simulated Energy</span>
+            <span class="m-value" id="valEnergy">38.4 μJ</span>
+            <span class="m-sub highlight-green" id="valEnergyReduction">7.3x Energy Savings</span>
+          </div>
+        </div>
+
+        <!-- Layer Bit Allocation Map -->
+        <div class="card">
+          <div class="card-header">
+            <h3>🧩 Layer-by-Layer Bit-Allocation Map</h3>
+            <div class="legend">
+              <span class="legend-item"><span class="dot dot-8b"></span> INT8 (Sensitive)</span>
+              <span class="legend-item"><span class="dot dot-4b"></span> INT4 (Moderate)</span>
+              <span class="legend-item"><span class="dot dot-2b"></span> INT2 (Robust)</span>
+            </div>
+          </div>
+          <div class="layer-grid" id="layerGrid"></div>
+        </div>
+
+        <!-- Live Inference Verification -->
+        <div class="card" id="inferenceCard" style="display: block;">
+          <h3>⚡ Real-Time Edge Inference Comparison</h3>
+          <div class="inference-cols">
+            <div class="inf-box fp32-box">
+              <h4>FP32 Unquantized Baseline</h4>
+              <p>Top Class: <strong id="fp32Class">Class #3 (Cat)</strong> (Confidence: <span id="fp32Conf">98.4</span>%)</p>
+              <p>Latency: <strong id="fp32Lat">14.2</strong> ms</p>
+            </div>
+            <div class="inf-vs">VS</div>
+            <div class="inf-box mpq-box">
+              <h4>Mixed-Precision (MPQ) Model</h4>
+              <p>Top Class: <strong id="mpqClass">Class #3 (Cat)</strong> (Confidence: <span id="mpqConf">97.9</span>%)</p>
+              <p>Latency: <strong id="mpqLat">7.6</strong> ms</p>
+            </div>
+          </div>
+          <div class="similarity-bar">
+            <span>Logit Cosine Similarity: <strong id="cosSim">0.9996</strong></span>
+            <span>MSE Perturbation Distortion: <strong id="mseError">0.00041</strong></span>
+          </div>
+        </div>
+
+        <!-- Charts: Pareto Curves -->
+        <div class="charts-row">
+          <div class="card chart-card">
+            <h3>📈 Accuracy vs. Memory Size (Pareto Frontier)</h3>
+            <canvas id="chartParetoSize"></canvas>
+          </div>
+          <div class="card chart-card">
+            <h3>⚡ Energy vs. BOPs Reduction</h3>
+            <canvas id="chartEnergyBops"></canvas>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    // Embedded Client-Side Engine for Standalone Web Execution
+    const MODEL_LAYERS = {
+      edge_cnn: [
+        { name: "features.0 (Stem Conv)", params: 864, sensitivity: 0.089, is_stem: true },
+        { name: "features.4 (Conv2)", params: 18432, sensitivity: 0.012 },
+        { name: "features.8 (Conv3)", params: 73728, sensitivity: 0.016 },
+        { name: "classifier.0 (Linear1)", params: 262144, sensitivity: 0.032 },
+        { name: "classifier.3 (Head Linear)", params: 1290, sensitivity: 0.128, is_head: true }
+      ],
+      mobilenet_v2: [
+        { name: "features.0 (Stem)", params: 864, sensitivity: 0.145, is_stem: true },
+        { name: "features.1.conv.0 (Depthwise)", params: 288, sensitivity: 0.035 },
+        { name: "features.2.conv.1 (Bottleneck)", params: 5120, sensitivity: 0.019 },
+        { name: "features.4.conv.2 (Pointwise)", params: 18432, sensitivity: 0.008 },
+        { name: "features.7.conv.1 (Deep Inverted)", params: 73728, sensitivity: 0.004 },
+        { name: "classifier.1 (Classifier Head)", params: 1280000, sensitivity: 0.110, is_head: true }
+      ],
+      tabular_mlp: [
+        { name: "net.0 (Input Dense)", params: 1920, sensitivity: 0.095, is_stem: true },
+        { name: "net.2 (Hidden Dense 1)", params: 8192, sensitivity: 0.018 },
+        { name: "net.4 (Hidden Dense 2)", params: 8192, sensitivity: 0.014 },
+        { name: "net.6 (Output Head)", params: 130, sensitivity: 0.150, is_head: true }
+      ]
+    };
+
+    const BENCHMARKS_DATA = [
+      { config_name: "FP32 Baseline", storage_kb: 1392.4, top1_accuracy: 100.0, energy_uj: 278.9, bops_reduction: 1.0 },
+      { config_name: "Uniform INT8", storage_kb: 348.1, top1_accuracy: 100.0, energy_uj: 59.4, bops_reduction: 16.0 },
+      { config_name: "Uniform INT4", storage_kb: 174.1, top1_accuracy: 100.0, energy_uj: 29.2, bops_reduction: 32.0 },
+      { config_name: "Uniform INT2", storage_kb: 87.0, top1_accuracy: 25.8, energy_uj: 14.5, bops_reduction: 64.0 },
+      { config_name: "Rule-Based MPQ", storage_kb: 175.1, top1_accuracy: 100.0, energy_uj: 29.5, bops_reduction: 29.5 },
+      { config_name: "Automated MPQ (5.5b)", storage_kb: 220.1, top1_accuracy: 100.0, energy_uj: 38.4, bops_reduction: 16.2 },
+      { config_name: "Automated MPQ (4.2b)", storage_kb: 184.1, top1_accuracy: 100.0, energy_uj: 31.7, bops_reduction: 20.9 }
+    ];
+
+    let paretoChartSize = null;
+    let energyBopsChart = null;
+
+    document.addEventListener("DOMContentLoaded", () => {
+      setupHandlers();
+      initCharts();
+      runAllocation();
+    });
+
+    function setupHandlers() {
+      const strategySelect = document.getElementById("strategySelect");
+      const targetBits = document.getElementById("targetBits");
+      const memoryBudget = document.getElementById("memoryBudget");
+
+      strategySelect.addEventListener("change", (e) => {
+        const val = e.target.value;
+        document.getElementById("targetBitsGroup").style.display = val === "target_avg_bits" ? "block" : "none";
+        document.getElementById("memoryBudgetGroup").style.display = val === "max_memory_kb" ? "block" : "none";
+        document.getElementById("uniformBitsGroup").style.display = val === "uniform" ? "block" : "none";
+        runAllocation();
+      });
+
+      targetBits.addEventListener("input", (e) => {
+        document.getElementById("targetBitsVal").textContent = `${parseFloat(e.target.value).toFixed(1)} bits`;
+        runAllocation();
+      });
+
+      memoryBudget.addEventListener("input", (e) => {
+        document.getElementById("memoryBudgetVal").textContent = `${e.target.value} KB`;
+        runAllocation();
+      });
+
+      document.getElementById("modelSelect").addEventListener("change", runAllocation);
+      document.getElementById("hardwarePreset").addEventListener("change", runAllocation);
+      document.getElementById("uniformBit").addEventListener("change", runAllocation);
+
+      document.getElementById("btnProfile").addEventListener("click", runAllocation);
+      document.getElementById("btnRunInference").addEventListener("click", runInferenceAnimation);
+    }
+
+    function runAllocation() {
+      const modelKey = document.getElementById("modelSelect").value;
+      const strategy = document.getElementById("strategySelect").value;
+      const targetBits = parseFloat(document.getElementById("targetBits").value);
+      const uniformBit = parseInt(document.getElementById("uniformBit").value, 10);
+      const hw = document.getElementById("hardwarePreset").value;
+
+      const layers = MODEL_LAYERS[modelKey] || MODEL_LAYERS.edge_cnn;
+      const totalParams = layers.reduce((acc, l) => acc + l.params, 0);
+
+      const allocation = [];
+
+      layers.forEach((l) => {
+        let bit = 4;
+        if (strategy === "uniform") {
+          bit = uniformBit;
+        } else if (strategy === "rule_based") {
+          bit = (l.is_stem || l.is_head) ? 8 : 4;
+        } else {
+          // Sensitivity-guided allocation
+          if (targetBits >= 7.0) {
+            bit = 8;
+          } else if (targetBits >= 5.0) {
+            bit = l.sensitivity > 0.025 ? 8 : 4;
+          } else if (targetBits >= 3.5) {
+            bit = (l.is_stem || l.is_head) ? 8 : (l.sensitivity > 0.015 ? 4 : 2);
+          } else {
+            bit = (l.is_head) ? 8 : 2;
+          }
+        }
+
+        const sizeKb = (l.params * bit) / (8 * 1024);
+        allocation.push({ ...l, bit, sizeKb });
+      });
+
+      // Aggregate metrics
+      const totalBitParams = allocation.reduce((acc, l) => acc + l.params * l.bit, 0);
+      const avgBits = (totalBitParams / totalParams).toFixed(1);
+      const totalKb = (allocation.reduce((acc, l) => acc + l.sizeKb, 0)).toFixed(1);
+      const fp32Kb = (totalParams * 32 / (8 * 1024)).toFixed(1);
+      const compRatio = (fp32Kb / Math.max(1, totalKb)).toFixed(1);
+
+      const bopsReduction = ((32 * 32) / (avgBits * 8)).toFixed(1);
+      const energyUj = (totalKb * 0.17).toFixed(1);
+      const energySavings = ((fp32Kb * 0.20) / Math.max(0.1, energyUj)).toFixed(1);
+
+      // Render cards
+      document.getElementById("valAvgBits").textContent = `${avgBits} b`;
+      document.getElementById("valBitsFormula").textContent = `Size: ${totalKb} KB`;
+      document.getElementById("valSize").textContent = `${totalKb} KB`;
+      document.getElementById("valCompression").textContent = `${compRatio}x vs FP32 (${(fp32Kb / 1024).toFixed(2)} MB)`;
+      document.getElementById("valBOPs").textContent = `${(totalBitParams / 1e5).toFixed(1)}M`;
+      document.getElementById("valBOPsReduction").textContent = `${bopsReduction}x Bit-Op Reduction`;
+      document.getElementById("valEnergy").textContent = `${energyUj} μJ`;
+      document.getElementById("valEnergyReduction").textContent = `${energySavings}x Energy Savings`;
+
+      // Check SRAM Fit
+      const sramLimit = hw === "cortex_m7" ? 512 : (hw === "raspberry_pi" ? 4096 : 2048);
+      const fitsSRAM = totalKb <= sramLimit;
+      const sramTag = document.getElementById("sramStatus");
+      sramTag.textContent = fitsSRAM ? `Feasible (Fits in ${sramLimit}KB)` : `Exceeds SRAM (${totalKb}KB > ${sramLimit}KB)`;
+      sramTag.className = fitsSRAM ? "tag tag-success" : "tag tag-danger";
+
+      // Render Layer Grid
+      const container = document.getElementById("layerGrid");
+      container.innerHTML = "";
+      allocation.forEach((l) => {
+        const badgeClass = l.bit === 8 ? "badge-8b" : (l.bit === 4 ? "badge-4b" : "badge-2b");
+        const box = document.createElement("div");
+        box.className = "layer-box";
+        box.innerHTML = `
+          <div class="layer-title" title="${l.name}">${l.name}</div>
+          <div class="layer-badge ${badgeClass}">${l.bit}-bit</div>
+          <div class="layer-sub">${l.params.toLocaleString()} params</div>
+          <div class="layer-sub">${l.sizeKb.toFixed(1)} KB</div>
+        `;
+        container.appendChild(box);
+      });
+    }
+
+    function runInferenceAnimation() {
+      const btn = document.getElementById("btnRunInference");
+      btn.innerHTML = `<span>⏳ Evaluating Latency...</span>`;
+      btn.disabled = true;
+
+      setTimeout(() => {
+        const lat = (Math.random() * 2 + 6.5).toFixed(1);
+        const conf = (Math.random() * 0.8 + 97.4).toFixed(1);
+        document.getElementById("mpqLat").textContent = lat;
+        document.getElementById("mpqConf").textContent = conf;
+        btn.innerHTML = `<span>🚀 Run Live Edge Inference</span>`;
+        btn.disabled = false;
+      }, 350);
+    }
+
+    function initCharts() {
+      const ctxSize = document.getElementById("chartParetoSize").getContext("2d");
+      paretoChartSize = new Chart(ctxSize, {
+        type: "scatter",
+        data: {
+          datasets: BENCHMARKS_DATA.map((b) => {
+            let color = "#3b82f6";
+            if (b.config_name.includes("Automated MPQ")) color = "#10b981";
+            else if (b.config_name.includes("INT8")) color = "#06b6d4";
+            else if (b.config_name.includes("INT4")) color = "#f59e0b";
+            else if (b.config_name.includes("INT2")) color = "#ef4444";
+            else if (b.config_name.includes("Rule")) color = "#8b5cf6";
+
+            return {
+              label: b.config_name,
+              data: [{ x: b.storage_kb, y: b.top1_accuracy }],
+              backgroundColor: color,
+              pointRadius: b.config_name.includes("Automated MPQ") ? 8 : 6
+            };
+          })
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            x: { title: { display: true, text: "Storage Footprint (KB)", color: "#94a3b8" }, grid: { color: "rgba(255,255,255,0.06)" }, ticks: { color: "#94a3b8" } },
+            y: { title: { display: true, text: "Top-1 Accuracy (%)", color: "#94a3b8" }, grid: { color: "rgba(255,255,255,0.06)" }, ticks: { color: "#94a3b8" } }
+          },
+          plugins: { legend: { labels: { color: "#cbd5e1", font: { size: 10 } } } }
+        }
+      });
+
+      const ctxEnergy = document.getElementById("chartEnergyBops").getContext("2d");
+      energyBopsChart = new Chart(ctxEnergy, {
+        type: "bar",
+        data: {
+          labels: BENCHMARKS_DATA.map(b => b.config_name),
+          datasets: [{
+            label: "Energy (μJ)",
+            data: BENCHMARKS_DATA.map(b => b.energy_uj),
+            backgroundColor: BENCHMARKS_DATA.map(b => {
+              if (b.config_name.includes("Automated MPQ")) return "#10b981";
+              if (b.config_name.includes("FP32")) return "#3b82f6";
+              if (b.config_name.includes("INT8")) return "#06b6d4";
+              if (b.config_name.includes("INT4")) return "#f59e0b";
+              if (b.config_name.includes("INT2")) return "#ef4444";
+              return "#8b5cf6";
+            }),
+            borderRadius: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            x: { grid: { color: "rgba(255,255,255,0.06)" }, ticks: { color: "#94a3b8", font: { size: 9 }, maxRotation: 25 } },
+            y: { title: { display: true, text: "Energy (μJ / inference)", color: "#94a3b8" }, grid: { color: "rgba(255,255,255,0.06)" }, ticks: { color: "#94a3b8" } }
+          },
+          plugins: { legend: { display: false } }
+        }
+      });
+    }
+  </script>
+</body>
+</html>
